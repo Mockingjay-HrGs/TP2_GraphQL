@@ -6,7 +6,8 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node --watch src/index.js",
-    "seed": "node src/seed.js"
+    "seed": "node src/seed.js",
+    "test:exercise3": "node --test tests/exercise3.test.js"
   },
   "engines": {
     "node": ">=20"

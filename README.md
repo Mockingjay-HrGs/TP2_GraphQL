@@ -1,7 +1,8 @@
 # Boutique GraphQL - TP site marchand
 
-Les exercices 1 et 2 sont implémentés : lecture et gestion du catalogue avec Apollo Server et Mongoose.
-Prérequis : Node.js 20 ou supérieur et une base MongoDB locale ou Atlas accessible.
+Les exercices 1 à 3 sont implémentés : catalogue, clients et commandes avec Apollo Server et Mongoose.
+Prérequis : Node.js 20 ou supérieur et MongoDB Atlas (utilisé pour ce TP).
+Pour une base locale, un replica set est nécessaire aux transactions de l’exercice 3.
 
 LIEN DU TP : https://docs.google.com/document/d/1XFo0BCYP4qvR0oiZPUKYehg33EVeF9xKScW9CKtic0w/edit?tab=t.0#heading=h.qqxgpg5s9y6o
 
@@ -12,7 +13,7 @@ LIEN DU TP : https://docs.google.com/document/d/1XFo0BCYP4qvR0oiZPUKYehg33EVeF9x
    npm install
    ```
 
-2. Copiez `.env.example` vers `.env` (`cp .env.example .env`), puis renseignez `MONGO_URI` avec votre chaine de
+2. Si `.env` n’existe pas encore, copiez `.env.example` vers `.env` (`cp .env.example .env`). Renseignez `MONGO_URI` avec votre chaine de
    connexion MongoDB (locale ou MongoDB Atlas) :
    ```
    MONGO_URI=mongodb://localhost:27017/boutique
@@ -31,8 +32,10 @@ console doit afficher "Connexion a MongoDB etablie." et "Serveur GraphQL pret : 
 
 - `src/index.js` : connexion MongoDB et démarrage d’Apollo Server.
 - `src/models/Product.js` : modèle Mongoose des produits.
-- `src/schema.js` : type Product, input ProductInput, queries et mutations.
-- `src/resolvers.js` : lectures, mutations et validation des produits.
+- `src/models/Customer.js` : clients avec email unique.
+- `src/models/Order.js` : commandes et références vers les clients et produits.
+- `src/schema.js` : types, inputs, queries et mutations GraphQL.
+- `src/resolvers.js` : lectures, mutations, validations et relations entre les types.
 - `src/seed.js` : 10 produits répartis entre informatique, maison et sport.
 
 Le seed ajoute les produits absents en les recherchant par nom. Une relance ne supprime
@@ -197,12 +200,138 @@ ou null, des identifiants mal formés et des produits absents, puis suppression.
 Les validations ont été vérifiées en création et en modification ; une modification
 refusée conserve le prix précédent. Le produit temporaire de test a été supprimé.
 
+## Exercice 3 : clients et commandes
+
+### 1. Créer un client
+
+```graphql
+mutation {
+  createCustomer(input: {
+    firstName: "Alice"
+    lastName: "Martin"
+    email: "alice.martin@example.com"
+    address: "10 rue des Lilas, Paris"
+  }) {
+    id
+    firstName
+    lastName
+    email
+    orders { id }
+  }
+}
+```
+
+Résultat attendu : le client créé et `orders: []`. **Copiez son `id` pour remplacer
+`ID_CLIENT` dans les requêtes suivantes.** Une deuxième création avec le même email
+est refusée avec `BAD_USER_INPUT`. Les emails sont enregistrés en minuscules et
+un index MongoDB garantit leur unicité.
+
+### 2. Choisir un produit disponible
+
+```graphql
+query {
+  products {
+    id
+    name
+    price
+    stock
+  }
+}
+```
+
+Choisissez un produit avec un stock d’au moins 2 et copiez son identifiant pour
+remplacer `ID_PRODUIT`. Notez son prix et son stock avant la commande.
+Tous les textes `ID_CLIENT` et `ID_PRODUIT` ci-dessous doivent être remplacés par
+les identifiants réels, en gardant les guillemets.
+
+### 3. Passer une commande
+
+```graphql
+mutation {
+  createOrder(
+    customerId: "ID_CLIENT"
+    items: [{ productId: "ID_PRODUIT", quantity: 2 }]
+  ) {
+    id
+    status
+    createdAt
+    total
+    customer { firstName lastName }
+    items {
+      quantity
+      product { name price stock }
+    }
+  }
+}
+```
+
+Résultat attendu : une commande au statut `PENDING`, une date au format ISO,
+une quantité de 2 et un total égal à `prix × 2`. Le stock du produit diminue de 2.
+Par exemple, deux claviers à 89,90 donnent un total de 179,80.
+Chaque exécution réussie crée une nouvelle commande et diminue le stock.
+
+### 4. Lire les commandes du client (requête imbriquée du TP)
+
+```graphql
+query {
+  customer(id: "ID_CLIENT") {
+    firstName
+    orders {
+      total
+      items {
+        quantity
+        product { name price }
+      }
+    }
+  }
+}
+```
+
+Résultat attendu : le prénom du client et sa liste de commandes, avec les produits
+et le total calculé de chacune. Un identifiant client valide mais absent renvoie
+`customer: null`.
+
+### 5. Vérifier le refus d’une commande
+
+Reprenez la mutation `createOrder` avec une quantité **supérieure au stock actuel**.
+Vous devez obtenir « Stock insuffisant pour le produit … » avec `BAD_USER_INPUT`.
+Relisez le stock et les commandes : ils doivent être inchangés.
+
+Testez également une commande avec deux produits, dont un seul en quantité
+insuffisante : toute la commande est refusée. Une liste vide, une quantité nulle
+ou négative et un identifiant mal formé sont refusés. Un client ou un produit
+absent provoque une erreur `NOT_FOUND`.
+
+**Fonctionnement :** les resolvers `Order.customer`, `OrderItem.product` et
+`Customer.orders` suivent les références MongoDB. `Order.total` additionne les
+prix multipliés par les quantités. Les lignes portant sur un même produit sont
+regroupées avant de contrôler le stock. Une transaction enregistre tous les
+décréments et la commande ensemble ; un échec annule les modifications.
+
+**Limite du modèle demandé par le TP :** le total utilise le prix actuel du catalogue,
+pas un prix mémorisé lors de l’achat. Modifier ce prix change donc le total calculé
+des anciennes commandes. Supprimer un produit référencé rend les champs de commande
+correspondants impossibles à résoudre ; conservez les produits utilisés par vos commandes.
+
+### Vérifications automatiques
+
+```bash
+npm run test:exercise3
+```
+
+Ce test utilise la base configurée dans `.env`. Il crée ses propres produits et
+clients temporaires, puis les supprime avec leurs commandes.
+Vérifications passées sur Atlas : email unique, relations imbriquées, calcul du total,
+statut et date, quantité cumulée des produits répétés, refus sans modification des
+stocks, annulation après un échec de sauvegarde et deux commandes concurrentes
+sur le même stock. Les données existantes sont conservées.
+
 ## Suivi Git
 
-Le TP demande au moins un commit par exercice. Le dossier fourni ne contient pas de
-dépôt Git à ce stade. Après initialisation du dépôt et validation de l’exercice 1,
-le message prévu est `exo1 catalogue produits`.
+Le TP demande au moins un commit par exercice. Le dépôt est maintenant initialisé.
+Les exercices 1 et 2 figurent dans le commit `a97b64d` (`Exercice 1 et 2`).
+L’exercice 3 doit faire l’objet d’un commit dédié : `exo3 clients et commandes`.
 
 ## Prochaine étape
 
-Exercice 3 : clients, commandes et relations entre les types GraphQL.
+Exercice 4 : recherche, filtres, tri et pagination des produits.

@@ -4,6 +4,7 @@ import { ApolloServer } from '@apollo/server';
 import { startStandaloneServer } from '@apollo/server/standalone';
 import { typeDefs } from './schema.js';
 import { resolvers } from './resolvers.js';
+import Customer from './models/Customer.js';
 
 const { MONGO_URI, PORT = 4000 } = process.env;
 
@@ -16,6 +17,7 @@ if (!MONGO_URI) {
 
 async function start() {
   await mongoose.connect(MONGO_URI);
+  await Customer.init();
   console.log('Connexion a MongoDB etablie.');
 
   const server = new ApolloServer({ typeDefs, resolvers });
