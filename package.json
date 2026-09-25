@@ -1,0 +1,20 @@
+{
+  "name": "boutique-graphql",
+  "version": "1.0.0",
+  "description": "TP GraphQL et MongoDB - API d'un site marchand",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node --watch src/index.js",
+    "seed": "node src/seed.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@apollo/server": "^5.0.0",
+    "dotenv": "^16.4.0",
+    "graphql": "^16.9.0",
+    "mongoose": "^8.7.0"
+  }
+}
